@@ -34,8 +34,8 @@
             <a
               class="attachment-link"
               [href]="downloadUrl(att.attachmentId)"
-              target="_blank"
-              rel="noopener noreferrer"
+              [attr.download]="att.fileName"
+              (click)="downloadAttachment(att, $event, true)"
               [title]="att.fileName"
             >
               {{ att.fileName }}
@@ -69,7 +69,8 @@
             mat-stroked-button
             class="btn-download"
             [href]="downloadUrl(att.attachmentId)"
-            download
+            [attr.download]="att.fileName"
+            (click)="downloadAttachment(att, $event, true)"
           >
             {{ 'attachments.download' | translate: 'Download' }}
           </a>

@@ -111,7 +111,10 @@ export class WorkItemAttachments implements OnInit {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(err?.error?.message ?? this.i18n.t('attachments.errLoad', 'Failed to load attachments.'));
+          this.error.set(
+            err?.error?.message ??
+              this.i18n.t('attachments.errLoad', 'Failed to load attachments.'),
+          );
           this.loading.set(false);
         },
       });
@@ -145,7 +148,9 @@ export class WorkItemAttachments implements OnInit {
       );
 
       if (!sessionResult) {
-        throw new Error(this.i18n.t('attachments.errCreateSession', 'Failed to create upload session.'));
+        throw new Error(
+          this.i18n.t('attachments.errCreateSession', 'Failed to create upload session.'),
+        );
       }
 
       // Step 2: Upload binary
@@ -191,13 +196,63 @@ export class WorkItemAttachments implements OnInit {
         this.attachments.update((prev) => prev.filter((a) => a.attachmentId !== attachmentId));
       },
       error: (err) => {
-        this.error.set(err?.error?.message ?? this.i18n.t('attachments.errDelete', 'Failed to delete attachment.'));
+        this.error.set(
+          err?.error?.message ??
+            this.i18n.t('attachments.errDelete', 'Failed to delete attachment.'),
+        );
       },
     });
   }
 
+  readonly downloading = signal<string | null>(null);
+
   downloadUrl(attachmentId: string): string {
     return `/api/v1/attachments/${attachmentId}/download`;
+  }
+
+  // The download endpoint requires the bearer token, so a raw anchor navigation returns 401.
+  // Fetch the bytes through HttpClient (the interceptor adds the token), then save or view them.
+  downloadAttachment(att: AttachmentItem, event?: Event, save = true): void {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (this.downloading()) return;
+    const viewer = save ? null : window.open('', '_blank');
+    this.downloading.set(att.attachmentId);
+    this.error.set('');
+    this.http
+      .get(this.downloadUrl(att.attachmentId), { responseType: 'blob' })
+      .subscribe({
+        next: (blob) => {
+          this.downloading.set(null);
+          const fileBlob =
+            blob.type && blob.type !== 'application/octet-stream'
+              ? blob
+              : new Blob([blob], { type: att.contentType || 'application/octet-stream' });
+          const url = window.URL.createObjectURL(fileBlob);
+          if (save) {
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = att.fileName || 'download';
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            document.body.removeChild(anchor);
+          } else if (viewer && !viewer.closed) {
+            viewer.location.href = url;
+          } else {
+            window.open(url, '_blank');
+          }
+          setTimeout(() => window.URL.revokeObjectURL(url), 100);
+        },
+        error: (err) => {
+          this.downloading.set(null);
+          if (viewer && !viewer.closed) viewer.close();
+          this.error.set(
+            err?.error?.message ??
+              this.i18n.t('attachments.errDownload', 'Không thể tải tệp đính kèm xuống.'),
+          );
+        },
+      });
   }
 
   formatBytes(bytes: number): string {

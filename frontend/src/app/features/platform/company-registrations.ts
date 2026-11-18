@@ -177,7 +177,11 @@ interface RegistrationPage {
                         <strong>{{ item.name }}</strong>
                         <span class="company-code">{{ item.code }}</span>
                         @if (item.tenantKey) {
-                          <span class="company-code" style="color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 9999px; padding: 2px 8px; font-weight: 600;">Mã không gian: {{ item.tenantKey }}</span>
+                          <span
+                            class="company-code"
+                            style="color: #0369a1; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 9999px; padding: 2px 8px; font-weight: 600;"
+                            >Mã không gian: {{ item.tenantKey }}</span
+                          >
                         }
                         @if (item.taxId) {
                           <span class="company-code" style="color: #145da0; font-weight: 600;"
@@ -196,13 +200,29 @@ interface RegistrationPage {
                         @if (item.evidenceDocumentDownloadUrl) {
                           <div style="margin-top: 0.35rem;">
                             <a
-                              [href]="item.evidenceDocumentDownloadUrl"
-                              target="_blank"
-                              rel="noopener"
-                              style="font-size: 0.8rem; color: #2563eb; font-weight: 600; text-decoration: underline;"
+                              href="#"
+                              (click)="openDocument(item, $event)"
+                              style="font-size: 0.8rem; color: #2563eb; font-weight: 600; text-decoration: underline; cursor: pointer;"
                             >
-                              📄 {{ item.evidenceDocumentFileName || ('platform.viewLicense' | translate: 'Xem giấy phép kinh doanh') }}
+                              📄
+                              {{
+                                item.evidenceDocumentFileName ||
+                                  ('platform.viewLicense' | translate: 'Xem giấy phép kinh doanh')
+                              }}
+                              @if (docBusy() === item.companyId) {
+                                <span style="color: #52657c;">
+                                  ({{ 'common.loading' | translate: 'Đang tải…' }})</span
+                                >
+                              }
                             </a>
+                            @if (docError() === item.companyId) {
+                              <div style="font-size: 0.75rem; color: #dc2626;">
+                                {{
+                                  'platform.documentOpenFailed'
+                                    | translate: 'Không mở được tài liệu, vui lòng thử lại.'
+                                }}
+                              </div>
+                            }
                           </div>
                         }
                       </td>
@@ -213,9 +233,7 @@ interface RegistrationPage {
                       </td>
                       <td>
                         {{ item.createdAt | date: 'mediumDate' }}
-                        <span class="company-code"
-                          >{{ item.createdAt | date: 'shortTime' }}</span
-                        >
+                        <span class="company-code">{{ item.createdAt | date: 'shortTime' }}</span>
                       </td>
                       <td style="text-align: right;">
                         <div class="action-buttons">
@@ -295,34 +313,52 @@ interface RegistrationPage {
           <div class="modal-card">
             <h2>{{ 'platform.approveModalTitle' | translate: 'Phê duyệt & cấp workspace' }}</h2>
             <p class="modal-desc">
-              {{ 'platform.approveModalDescBefore' | translate: 'Phê duyệt doanh nghiệp' }} <strong>{{ item.name }}</strong> {{ 'platform.approveModalDescAfter' | translate: 'sẽ tự động khởi tạo không gian làm việc (tenant) và tài khoản Quản trị viên Doanh nghiệp.' }}
-
+              {{ 'platform.approveModalDescBefore' | translate: 'Phê duyệt doanh nghiệp' }}
+              <strong>{{ item.name }}</strong>
+              {{
+                'platform.approveModalDescAfter'
+                  | translate
+                    : 'sẽ tự động khởi tạo không gian làm việc (tenant) và tài khoản Quản trị viên Doanh nghiệp.'
+              }}
             </p>
 
             <form [formGroup]="approveForm" (ngSubmit)="confirmApprove(item)" class="modal-form">
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.tenantKeyLabel' | translate: 'Mã Không gian làm việc (Tenant Key)' }}</mat-label>
+                <mat-label>{{
+                  'platform.tenantKeyLabel' | translate: 'Mã Không gian làm việc (Tenant Key)'
+                }}</mat-label>
                 <input matInput formControlName="tenantKey" placeholder="vd: acme-corp" />
-                <mat-hint>{{ 'platform.tenantKeyHint' | translate: 'Chữ thường không dấu, số và dấu gạch nối (BR-023)' }}</mat-hint>
+                <mat-hint>{{
+                  'platform.tenantKeyHint'
+                    | translate: 'Chữ thường không dấu, số và dấu gạch nối (BR-023)'
+                }}</mat-hint>
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.adminFullNameLabel' | translate: 'Họ và tên Quản trị viên' }}</mat-label>
+                <mat-label>{{
+                  'platform.adminFullNameLabel' | translate: 'Họ và tên Quản trị viên'
+                }}</mat-label>
                 <input matInput formControlName="adminFullName" />
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.adminEmailLabel' | translate: 'Email Quản trị viên Doanh nghiệp' }}</mat-label>
+                <mat-label>{{
+                  'platform.adminEmailLabel' | translate: 'Email Quản trị viên Doanh nghiệp'
+                }}</mat-label>
                 <input matInput type="email" formControlName="adminEmail" />
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.adminCodeLabel' | translate: 'Mã Nhân viên Quản trị' }}</mat-label>
+                <mat-label>{{
+                  'platform.adminCodeLabel' | translate: 'Mã Nhân viên Quản trị'
+                }}</mat-label>
                 <input matInput formControlName="adminEmployeeCode" />
               </mat-form-field>
 
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.adminPasswordLabel' | translate: 'Mật khẩu Khởi tạo Ban đầu' }}</mat-label>
+                <mat-label>{{
+                  'platform.adminPasswordLabel' | translate: 'Mật khẩu Khởi tạo Ban đầu'
+                }}</mat-label>
                 <input matInput formControlName="adminPassword" type="password" />
               </mat-form-field>
 
@@ -359,13 +395,19 @@ interface RegistrationPage {
           <div class="modal-card">
             <h2>{{ 'platform.rejectModalTitle' | translate: 'Từ chối hồ sơ doanh nghiệp' }}</h2>
             <p class="modal-desc">
-              {{ 'platform.rejectModalDescBefore' | translate: 'Vui lòng cung cấp lý do từ chối hồ sơ đăng ký của' }}
-              <strong>{{ item.name }}</strong> {{ 'platform.rejectModalDescAfter' | translate: '(bắt buộc theo quy định BR-022).' }}
+              {{
+                'platform.rejectModalDescBefore'
+                  | translate: 'Vui lòng cung cấp lý do từ chối hồ sơ đăng ký của'
+              }}
+              <strong>{{ item.name }}</strong>
+              {{ 'platform.rejectModalDescAfter' | translate: '(bắt buộc theo quy định BR-022).' }}
             </p>
 
             <form [formGroup]="rejectForm" (ngSubmit)="confirmReject(item)" class="modal-form">
               <mat-form-field appearance="outline">
-                <mat-label>{{ 'platform.rejectReasonLabel' | translate: 'Lý do từ chối' }}</mat-label>
+                <mat-label>{{
+                  'platform.rejectReasonLabel' | translate: 'Lý do từ chối'
+                }}</mat-label>
                 <textarea
                   matInput
                   formControlName="reason"
@@ -376,7 +418,10 @@ interface RegistrationPage {
                   rejectForm.controls.reason.hasError('required') ||
                   rejectForm.controls.reason.hasError('minlength')
                 ) {
-                  <mat-error>{{ 'platform.rejectReasonMin' | translate: 'Cần nhập lý do từ chối tối thiểu 5 ký tự.' }}</mat-error>
+                  <mat-error>{{
+                    'platform.rejectReasonMin'
+                      | translate: 'Cần nhập lý do từ chối tối thiểu 5 ký tự.'
+                  }}</mat-error>
                 }
               </mat-form-field>
 
@@ -423,6 +468,9 @@ export class CompanyRegistrations {
   readonly error = signal(false);
   readonly page = signal(1);
 
+  readonly docBusy = signal<string | null>(null);
+  readonly docError = signal<string | null>(null);
+
   readonly approvingItem = signal<Registration | null>(null);
   readonly rejectingItem = signal<Registration | null>(null);
   readonly actionBusy = signal(false);
@@ -456,6 +504,41 @@ export class CompanyRegistrations {
   apply() {
     this.applied = this.filters.getRawValue();
     this.load(1);
+  }
+
+  // The evidence endpoint requires the bearer token, so a plain anchor navigation returns 401.
+  // Fetch it through HttpClient (the interceptor adds the token) and open the bytes locally.
+  openDocument(item: Registration, event: Event): void {
+    event.preventDefault();
+    const url = item.evidenceDocumentDownloadUrl;
+    if (!url || this.docBusy()) return;
+    // Open the tab synchronously inside the click gesture to avoid popup blocking.
+    const viewer = window.open('', '_blank');
+    this.docBusy.set(item.companyId);
+    this.docError.set(null);
+    this.http
+      .get(url, { responseType: 'blob' })
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: (blob) => {
+          this.docBusy.set(null);
+          const objectUrl = URL.createObjectURL(blob);
+          if (viewer && !viewer.closed) {
+            viewer.location.href = objectUrl;
+          } else {
+            const anchor = document.createElement('a');
+            anchor.href = objectUrl;
+            anchor.download = item.evidenceDocumentFileName || 'document';
+            anchor.click();
+          }
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+        },
+        error: () => {
+          this.docBusy.set(null);
+          this.docError.set(item.companyId);
+          if (viewer && !viewer.closed) viewer.close();
+        },
+      });
   }
 
   load(page: number) {
@@ -514,12 +597,16 @@ export class CompanyRegistrations {
         next: () => {
           this.actionBusy.set(false);
           this.approvingItem.set(null);
-          this.actionSuccess.set(`Đã phê duyệt và khởi tạo không gian làm việc cho ${item.name} thành công!`);
+          this.actionSuccess.set(
+            `Đã phê duyệt và khởi tạo không gian làm việc cho ${item.name} thành công!`,
+          );
           this.load(this.page());
         },
         error: (err: HttpErrorResponse) => {
           this.actionBusy.set(false);
-          this.actionError.set(err.error?.message || 'Không thể phê duyệt hồ sơ đăng ký doanh nghiệp.');
+          this.actionError.set(
+            err.error?.message || 'Không thể phê duyệt hồ sơ đăng ký doanh nghiệp.',
+          );
         },
       });
   }
@@ -548,7 +635,9 @@ export class CompanyRegistrations {
         },
         error: (err: HttpErrorResponse) => {
           this.actionBusy.set(false);
-          this.actionError.set(err.error?.message || 'Không thể từ chối hồ sơ đăng ký doanh nghiệp.');
+          this.actionError.set(
+            err.error?.message || 'Không thể từ chối hồ sơ đăng ký doanh nghiệp.',
+          );
         },
       });
   }
@@ -560,7 +649,9 @@ export class CompanyRegistrations {
       .subscribe({
         next: () => {
           const statusText = this.labels[status] ?? status;
-          this.actionSuccess.set(`Đã cập nhật trạng thái doanh nghiệp ${item.name} thành ${statusText}.`);
+          this.actionSuccess.set(
+            `Đã cập nhật trạng thái doanh nghiệp ${item.name} thành ${statusText}.`,
+          );
           this.load(this.page());
         },
         error: (err: HttpErrorResponse) => {

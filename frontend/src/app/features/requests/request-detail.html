@@ -163,6 +163,38 @@
             {{ 'common.cancel' | translate: 'Cancel' }}
           </button>
         }
+        @if (canEscalate()) {
+          <button
+            mat-stroked-button
+            color="accent"
+            type="button"
+            [disabled]="actionInProgress()"
+            (click)="openModal('escalate')"
+            title="Chuyển yêu cầu lên cấp trên (Giám đốc) để phê duyệt"
+          >
+            ⬆️ {{ 'requestDetail.escalate' | translate: 'Chuyển lên cấp trên duyệt' }}
+          </button>
+        }
+        @if (canDecideElevated()) {
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="actionInProgress()"
+            (click)="executeElevatedDecision(true)"
+          >
+            ✓ {{ 'requestDetail.approveElevated' | translate: 'Duyệt (cấp trên)' }}
+          </button>
+          <button
+            mat-stroked-button
+            color="warn"
+            type="button"
+            [disabled]="actionInProgress()"
+            (click)="executeElevatedDecision(false)"
+          >
+            ✕ {{ 'requestDetail.rejectElevated' | translate: 'Từ chối (cấp trên)' }}
+          </button>
+        }
         @if (canArchive()) {
           <button
             mat-stroked-button
@@ -203,6 +235,44 @@
       </div>
     }
 
+    @if (escalation(); as esc) {
+      <div
+        role="status"
+        style="
+          margin: 12px 0;
+          padding: 12px 14px;
+          border-radius: 10px;
+          border: 1px solid;
+          font-size: 0.86rem;
+        "
+        [style.background]="
+          esc.state === 'PENDING' ? '#fff7ed' : esc.state === 'APPROVED' ? '#f0fdf4' : '#fef2f2'
+        "
+        [style.border-color]="
+          esc.state === 'PENDING' ? '#fdba74' : esc.state === 'APPROVED' ? '#86efac' : '#fca5a5'
+        "
+      >
+        <strong>
+          @if (esc.state === 'PENDING') {
+            ⏳ Đang chờ cấp trên duyệt
+          } @else if (esc.state === 'APPROVED') {
+            ✓ Cấp trên đã duyệt
+          } @else {
+            ✕ Cấp trên đã từ chối
+          }
+        </strong>
+        <div style="margin-top: 4px; color: #475569">
+          {{ esc.escalatedByName }} chuyển lên: "{{ esc.reason }}"
+          @if (esc.decidedByName) {
+            <br />{{ esc.decidedByName }}
+            {{ esc.state === 'APPROVED' ? 'đã duyệt' : 'đã từ chối' }}@if (esc.decisionNote) {
+              : "{{ esc.decisionNote }}"
+            }
+          }
+        </div>
+      </div>
+    }
+
     @if (aiMessage()) {
       <div class="ai-notification-banner" role="status">
         <span>✨ {{ aiMessage() }}</span>
@@ -213,7 +283,9 @@
     <!-- Rejection Callout -->
     @if (detail.status === 'REJECTED' && detail.rejectionReason) {
       <div class="rejection-callout" role="alert">
-        <div class="rejection-title">{{ 'requests.rejectedTitle' | translate: 'Request Rejected' }}</div>
+        <div class="rejection-title">
+          {{ 'requests.rejectedTitle' | translate: 'Request Rejected' }}
+        </div>
         <div class="rejection-body">{{ detail.rejectionReason }}</div>
       </div>
     }
@@ -224,7 +296,9 @@
         <div class="routing-target-header">
           <span class="routing-target-label">Phân công & Điều phối hiện tại</span>
           @if (detail.routedAt) {
-            <span class="routing-time">Đã điều phối {{ detail.routedAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+            <span class="routing-time"
+              >Đã điều phối {{ detail.routedAt | date: 'dd/MM/yyyy HH:mm' }}</span
+            >
           }
         </div>
         <div class="routing-target-details">
@@ -420,6 +494,42 @@
                 ? ('requestDetail.rejectingProgress' | translate: 'Rejecting…')
                 : ('requestDetail.confirmRejectBtn' | translate: 'Reject Request')
             }}
+          </button>
+          <button mat-stroked-button type="button" (click)="closeModal()">
+            {{ 'common.cancel' | translate: 'Cancel' }}
+          </button>
+        </div>
+      </div>
+    }
+
+    @if (activeModal() === 'escalate') {
+      <div class="action-card" role="region" aria-label="Escalate request panel">
+        <h3>{{ 'requestDetail.escalateModalTitle' | translate: 'Chuyển lên cấp trên duyệt' }}</h3>
+        <p class="action-subtext">
+          Khi yêu cầu vượt quá thẩm quyền của bạn, hãy nêu lý do và chuyển lên cấp trên (Giám đốc)
+          để phê duyệt. Yêu cầu vẫn giữ nguyên trạng thái xử lý hiện tại.
+        </p>
+
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Lý do chuyển lên cấp trên *</mat-label>
+          <textarea
+            matInput
+            [(ngModel)]="escalateReason"
+            rows="3"
+            required
+            placeholder="Ví dụ: Chi phí vượt hạn mức phòng, cần Giám đốc phê duyệt…"
+          ></textarea>
+        </mat-form-field>
+
+        <div class="modal-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="actionInProgress() || !escalateReason().trim()"
+            (click)="executeEscalate()"
+          >
+            {{ actionInProgress() ? 'Đang chuyển…' : 'Chuyển lên cấp trên' }}
           </button>
           <button mat-stroked-button type="button" (click)="closeModal()">
             {{ 'common.cancel' | translate: 'Cancel' }}
@@ -832,7 +942,6 @@
             'ai.branchingSubtitle'
               | translate: 'Phân rã kế hoạch thành cây thực thi song song và tuần tự theo phòng ban'
           }}
-
         </p>
 
         @if (branchingPlan()?.rationale) {
@@ -889,7 +998,9 @@
                   @if (node.departmentName) {
                     <span class="badge badge-dept">{{ node.departmentName }}</span>
                   }
-                  <span class="badge badge-pri">{{ 'priorityBadge.' + node.priority | translate: node.priority }}</span>
+                  <span class="badge badge-pri">{{
+                    'priorityBadge.' + node.priority | translate: node.priority
+                  }}</span>
                   <span class="badge-days"
                     >⏱ {{ node.suggestedDurationDays }}
                     {{ 'common.days' | translate: 'ngày' }}</span
@@ -927,7 +1038,6 @@
                   <div class="node-reasoning">
                     <em>{{ 'ai.reasoning' | translate: 'Lý do AI:' }}</em> {{ node.reasoning }}
                   </div>
-
                 }
               </div>
             }
@@ -991,7 +1101,6 @@
             </button>
           </div>
         }
-
       </div>
     }
 
@@ -1079,7 +1188,9 @@
           <h2>{{ 'requestDetail.linkedTasks' | translate: 'Linked Tasks' }}</h2>
           <span class="badge"
             >{{ detail.tasks?.length || 0 }}
-            {{ 'requestDetail.unitTasks' | translate: (detail.tasks?.length === 1 ? 'task' : 'tasks') }}</span
+            {{
+              'requestDetail.unitTasks' | translate: (detail.tasks?.length === 1 ? 'task' : 'tasks')
+            }}</span
           >
         </div>
         @if (canCreateTask()) {
@@ -1172,7 +1283,10 @@
           <h2>{{ 'requestDetail.resolutionHistory' | translate: 'Resolution History' }}</h2>
           <span class="badge"
             >{{ detail.resolutions.length }}
-            {{ 'requestDetail.unitRevisions' | translate: (detail.resolutions.length === 1 ? 'revision' : 'revisions') }}</span
+            {{
+              'requestDetail.unitRevisions'
+                | translate: (detail.resolutions.length === 1 ? 'revision' : 'revisions')
+            }}</span
           >
         </div>
         <div class="history-list">
@@ -1208,7 +1322,10 @@
           </h2>
           <span class="badge"
             >{{ detail.confirmations.length }}
-            {{ 'requestDetail.unitDecisions' | translate: (detail.confirmations.length === 1 ? 'decision' : 'decisions') }}</span
+            {{
+              'requestDetail.unitDecisions'
+                | translate: (detail.confirmations.length === 1 ? 'decision' : 'decisions')
+            }}</span
           >
         </div>
         <div class="history-list">

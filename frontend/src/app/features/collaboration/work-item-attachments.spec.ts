@@ -1,6 +1,7 @@
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { authInterceptor } from '../../core/auth/auth.interceptor';
 import { SessionService } from '../../core/auth/session';
 import { AttachmentItem, UploadSessionResult, WorkItemAttachments } from './work-item-attachments';
 
@@ -46,11 +47,13 @@ describe('WorkItemAttachments component', () => {
     TestBed.configureTestingModule({
       imports: [WorkItemAttachments],
       providers: [
-        provideHttpClient(),
+        provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
         {
           provide: SessionService,
           useValue: {
+            accessToken: () => 'dev-token-role-user',
+            sessionGeneration: () => 1,
             hasPermission: (perm: string) =>
               perm === 'attachments.upload' ||
               perm === 'attachments.read' ||
@@ -206,5 +209,103 @@ describe('WorkItemAttachments component', () => {
 
     expect(fixture.componentInstance.attachments().length).toBe(1);
     expect(fixture.componentInstance.attachments()[0].attachmentId).toBe('att-2');
+  });
+
+  it('downloads attachment via authenticated HttpClient blob request with original fileName', async () => {
+    const createObjectUrlSpy = vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:http://localhost/test-blob');
+    const revokeObjectUrlSpy = vi.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const fixture = TestBed.createComponent(WorkItemAttachments);
+    fixture.componentRef.setInput('objectType', 'TASK');
+    fixture.componentRef.setInput('objectId', 'task-100');
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((r) => r.url === '/api/v1/attachments').flush(mockAttachments);
+    fixture.detectChanges();
+
+    const mockEvent = new MouseEvent('click', { cancelable: true });
+    fixture.componentInstance.downloadAttachment(mockAttachments[0], mockEvent);
+    expect(mockEvent.defaultPrevented).toBe(true);
+
+    const downloadReq = http.expectOne('/api/v1/attachments/att-1/download');
+    expect(downloadReq.request.method).toBe('GET');
+    expect(downloadReq.request.responseType).toBe('blob');
+    expect(downloadReq.request.headers.get('Authorization')).toBe('Bearer dev-token-role-user');
+    downloadReq.flush(new Blob(['pdf binary content'], { type: 'application/pdf' }));
+
+    expect(createObjectUrlSpy).toHaveBeenCalled();
+    expect(clickSpy).toHaveBeenCalled();
+
+    await tick(150);
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:http://localhost/test-blob');
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+    clickSpy.mockRestore();
+  });
+
+  it('triggers authenticated blob download on DOM click for both .btn-download and .attachment-link in REQUEST and TASK views', async () => {
+    const createObjectUrlSpy = vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:http://localhost/dom-blob');
+    const revokeObjectUrlSpy = vi.spyOn(window.URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickedDownloads: string[] = [];
+    const origCreateElement = document.createElement.bind(document);
+    const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+      const el = origCreateElement(tagName, options);
+      if (tagName.toLowerCase() === 'a') {
+        vi.spyOn(el as HTMLAnchorElement, 'click').mockImplementation(() => {
+          clickedDownloads.push((el as HTMLAnchorElement).download);
+        });
+      }
+      return el;
+    });
+
+    for (const objectType of ['TASK', 'REQUEST'] as const) {
+      const fixture = TestBed.createComponent(WorkItemAttachments);
+      fixture.componentRef.setInput('objectType', objectType);
+      fixture.componentRef.setInput('objectId', 'obj-100');
+      fixture.detectChanges();
+
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne((r) => r.url === '/api/v1/attachments').flush(mockAttachments);
+      fixture.detectChanges();
+
+      // Click .btn-download on first attachment
+      const downloadBtn = fixture.nativeElement.querySelector('.btn-download') as HTMLAnchorElement;
+      const btnEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+      downloadBtn.dispatchEvent(btnEvent);
+      expect(btnEvent.defaultPrevented).toBe(true);
+
+      const req1 = http.expectOne('/api/v1/attachments/att-1/download');
+      expect(req1.request.headers.get('Authorization')).toBe('Bearer dev-token-role-user');
+      expect(req1.request.responseType).toBe('blob');
+      req1.flush(new Blob(['pdf-bytes'], { type: 'application/pdf' }));
+
+      // Click .attachment-link on second attachment
+      const titleLinks = fixture.nativeElement.querySelectorAll('.attachment-link') as NodeListOf<HTMLAnchorElement>;
+      const linkEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+      titleLinks[1].dispatchEvent(linkEvent);
+      expect(linkEvent.defaultPrevented).toBe(true);
+
+      const req2 = http.expectOne('/api/v1/attachments/att-2/download');
+      expect(req2.request.headers.get('Authorization')).toBe('Bearer dev-token-role-user');
+      expect(req2.request.responseType).toBe('blob');
+      req2.flush(new Blob(['xlsx-bytes'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+
+      fixture.destroy();
+    }
+
+    expect(clickedDownloads).toEqual([
+      'spec-architecture.pdf',
+      'data-metrics.xlsx',
+      'spec-architecture.pdf',
+      'data-metrics.xlsx',
+    ]);
+
+    await tick(150);
+    createElementSpy.mockRestore();
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 });

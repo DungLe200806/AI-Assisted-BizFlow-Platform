@@ -24,6 +24,12 @@ interface ServiceOption {
   categories: CategoryOption[];
 }
 
+interface RecipientOptions {
+  myLevel: number;
+  departments: { departmentId: string; name: string }[];
+  users: { userId: string; fullName: string; employeeCode: string; level: number }[];
+}
+
 @Component({
   selector: 'bf-request-create',
   imports: [
@@ -52,6 +58,7 @@ export class RequestCreate implements OnInit {
 
   readonly services = signal<ServiceOption[]>([]);
   readonly availableCategories = signal<CategoryOption[]>([]);
+  readonly recipients = signal<RecipientOptions | null>(null);
 
   private key = crypto.randomUUID();
 
@@ -62,10 +69,13 @@ export class RequestCreate implements OnInit {
     description: [''],
     priority: ['MEDIUM', Validators.required],
     submitImmediately: [false],
+    // "dept:<id>" | "user:<id>" | "" — where to send the request (optional, respects no level-skipping)
+    recipient: [''],
   });
 
   ngOnInit() {
     this.loadCatalog();
+    this.loadRecipients();
 
     // When service changes, update available categories
     this.form.controls.serviceId.valueChanges
@@ -112,6 +122,46 @@ export class RequestCreate implements OnInit {
       });
   }
 
+  loadRecipients() {
+    this.http
+      .get<RecipientOptions>('/api/v1/requests/recipient-options')
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: (opts) => this.recipients.set(opts),
+        error: () => this.recipients.set(null),
+      });
+  }
+
+  private sendToRecipient(requestId: string) {
+    const raw = this.form.getRawValue().recipient;
+    if (!raw) {
+      this.done.set(true);
+      void this.router.navigate(['/requests', requestId]);
+      return;
+    }
+    const [kind, id] = raw.split(':');
+    const body = kind === 'dept' ? { toDepartmentId: id } : { toUserId: id };
+    this.http
+      .post(`/api/v1/requests/${requestId}/send-to`, body)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe({
+        next: () => {
+          this.done.set(true);
+          void this.router.navigate(['/requests', requestId]);
+        },
+        error: (failure: HttpErrorResponse) => {
+          // The request was created & submitted; only the auto-routing to the chosen recipient failed.
+          this.done.set(true);
+          const msg =
+            failure.status === 403
+              ? 'Yêu cầu đã tạo nhưng không gửi được tới nơi đã chọn (vượt cấp). Quản lý sẽ định tuyến.'
+              : 'Yêu cầu đã tạo nhưng chưa gửi được tới nơi đã chọn. Quản lý sẽ định tuyến.';
+          this.error.set(msg);
+          void this.router.navigate(['/requests', requestId]);
+        },
+      });
+  }
+
   save() {
     if (this.busy() || this.done() || !this.session.hasPermission('requests.create')) return;
 
@@ -146,8 +196,14 @@ export class RequestCreate implements OnInit {
             this.unknown();
             return;
           }
-          this.done.set(true);
-          void this.router.navigate(['/requests', result.requestId]);
+          // Routing to a chosen recipient only applies to a submitted request, not a draft.
+          const value = this.form.getRawValue();
+          if (value.submitImmediately && value.recipient) {
+            this.sendToRecipient(result.requestId);
+          } else {
+            this.done.set(true);
+            void this.router.navigate(['/requests', result.requestId]);
+          }
         },
         error: (failure: HttpErrorResponse) => {
           this.busy.set(false);
@@ -161,7 +217,9 @@ export class RequestCreate implements OnInit {
           } else if (failure.status === 409) {
             this.form.enable();
             this.key = crypto.randomUUID();
-            this.error.set('Yêu cầu bị xung đột với một yêu cầu đã gửi trước đó. Vui lòng thử lại.');
+            this.error.set(
+              'Yêu cầu bị xung đột với một yêu cầu đã gửi trước đó. Vui lòng thử lại.',
+            );
           } else if (failure.status === 403 || failure.status === 401) {
             this.done.set(true);
             this.error.set('Bạn không có quyền tạo yêu cầu dịch vụ.');

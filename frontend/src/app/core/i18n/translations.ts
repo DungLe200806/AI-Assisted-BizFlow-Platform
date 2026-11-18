@@ -1588,6 +1588,7 @@ export const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
     'attachments.errLoad': 'Không thể tải tệp đính kèm.',
     'attachments.errCreateSession': 'Không thể khởi tạo phiên tải lên.',
     'attachments.errDelete': 'Không thể xóa tệp đính kèm.',
+    'attachments.errDownload': 'Không thể tải tệp đính kèm xuống.',
     'platform.errApprove': 'Không thể phê duyệt đăng ký doanh nghiệp.',
     'platform.errReject': 'Không thể từ chối đăng ký doanh nghiệp.',
     'platform.errStatus': 'Không thể cập nhật trạng thái doanh nghiệp.',
