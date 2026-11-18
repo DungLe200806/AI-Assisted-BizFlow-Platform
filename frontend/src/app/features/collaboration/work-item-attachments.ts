@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { lastValueFrom } from 'rxjs';
 import { SessionService } from '../../core/auth/session';
+import { I18nService } from '../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { DocumentSummarizerDialog } from '../../shared/ai/document-summarizer-dialog';
 import { ToastService } from '../../core/toast/toast.service';
@@ -54,6 +55,7 @@ export class WorkItemAttachments implements OnInit {
   readonly session = inject(SessionService);
   private readonly http = inject(HttpClient);
   private readonly toast = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   readonly attachments = signal<AttachmentItem[]>([]);
   readonly loading = signal(false);
@@ -109,7 +111,10 @@ export class WorkItemAttachments implements OnInit {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(err?.error?.message ?? 'Failed to load attachments.');
+          this.error.set(
+            err?.error?.message ??
+              this.i18n.t('attachments.errLoad', 'Failed to load attachments.'),
+          );
           this.loading.set(false);
         },
       });
@@ -127,7 +132,7 @@ export class WorkItemAttachments implements OnInit {
     }
 
     this.uploading.set(true);
-    this.uploadMessage.set('Preparing upload session…');
+    this.uploadMessage.set('Đang chuẩn bị phiên tải lên…');
     this.error.set('');
 
     try {
@@ -142,10 +147,14 @@ export class WorkItemAttachments implements OnInit {
         }),
       );
 
-      if (!sessionResult) throw new Error('Failed to create upload session.');
+      if (!sessionResult) {
+        throw new Error(
+          this.i18n.t('attachments.errCreateSession', 'Failed to create upload session.'),
+        );
+      }
 
       // Step 2: Upload binary
-      this.uploadMessage.set('Uploading file…');
+      this.uploadMessage.set('Đang tải tệp lên…');
       const fileBytes = await file.arrayBuffer();
       await lastValueFrom(
         this.http.put(sessionResult.uploadUrl, fileBytes, {
@@ -154,11 +163,11 @@ export class WorkItemAttachments implements OnInit {
       );
 
       // Step 3: Compute SHA-256 hash
-      this.uploadMessage.set('Verifying integrity…');
+      this.uploadMessage.set('Đang kiểm tra toàn vẹn tệp…');
       const hashHex = await this.computeSha256(fileBytes);
 
       // Step 4: Finalize
-      this.uploadMessage.set('Finalizing attachment…');
+      this.uploadMessage.set('Đang hoàn tất đính kèm…');
       const finalized = await lastValueFrom(
         this.http.post<AttachmentItem>('/api/v1/attachments/finalize', {
           attachmentId: sessionResult.attachmentId,
@@ -171,7 +180,7 @@ export class WorkItemAttachments implements OnInit {
       }
       inputElement.value = '';
     } catch (err: any) {
-      this.error.set(err?.error?.message ?? err?.message ?? 'Attachment upload failed.');
+      this.error.set(err?.error?.message ?? err?.message ?? 'Tải tệp đính kèm thất bại.');
     } finally {
       this.uploading.set(false);
       this.uploadMessage.set('');
@@ -187,13 +196,52 @@ export class WorkItemAttachments implements OnInit {
         this.attachments.update((prev) => prev.filter((a) => a.attachmentId !== attachmentId));
       },
       error: (err) => {
-        this.error.set(err?.error?.message ?? 'Failed to delete attachment.');
+        this.error.set(
+          err?.error?.message ??
+            this.i18n.t('attachments.errDelete', 'Failed to delete attachment.'),
+        );
       },
     });
   }
 
-  downloadUrl(attachmentId: string): string {
-    return `/api/v1/attachments/${attachmentId}/download`;
+  readonly downloading = signal<string | null>(null);
+
+  // The download endpoint requires the bearer token, so a raw anchor navigation returns 401.
+  // Fetch the bytes through HttpClient (the interceptor adds the token), then view or save them.
+  downloadAttachment(att: AttachmentItem, event: Event, save = false): void {
+    event.preventDefault();
+    if (this.downloading()) return;
+    // Open the tab synchronously inside the click gesture to avoid popup blocking (view mode only).
+    const viewer = save ? null : window.open('', '_blank');
+    this.downloading.set(att.attachmentId);
+    this.error.set('');
+    this.http
+      .get(`/api/v1/attachments/${att.attachmentId}/download`, { responseType: 'blob' })
+      .subscribe({
+        next: (blob) => {
+          this.downloading.set(null);
+          const url = window.URL.createObjectURL(blob);
+          if (save) {
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = att.fileName;
+            anchor.click();
+          } else if (viewer && !viewer.closed) {
+            viewer.location.href = url;
+          } else {
+            window.open(url, '_blank');
+          }
+          setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+        },
+        error: (err) => {
+          this.downloading.set(null);
+          if (viewer && !viewer.closed) viewer.close();
+          this.error.set(
+            err?.error?.message ??
+              this.i18n.t('attachments.errDownload', 'Không tải được tệp đính kèm.'),
+          );
+        },
+      });
   }
 
   formatBytes(bytes: number): string {

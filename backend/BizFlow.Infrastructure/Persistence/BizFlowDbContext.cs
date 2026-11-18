@@ -31,6 +31,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
     public DbSet<ServiceCategory> ServiceCategories => Set<ServiceCategory>();
     public DbSet<WorkRequest> Requests => Set<WorkRequest>();
     public DbSet<RequestRouting> RequestRoutings => Set<RequestRouting>();
+    public DbSet<RequestEscalation> RequestEscalations => Set<RequestEscalation>();
     public DbSet<RequestResolution> RequestResolutions => Set<RequestResolution>();
     public DbSet<WorkTask> WorkTasks => Set<WorkTask>();
     public DbSet<TaskChecklistItem> TaskChecklistItems => Set<TaskChecklistItem>();
@@ -43,6 +44,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
     public DbSet<AIInteraction> AIInteractions => Set<AIInteraction>();
     public DbSet<AIRecommendation> AIRecommendations => Set<AIRecommendation>();
     public DbSet<AIAgentAction> AIAgentActions => Set<AIAgentAction>();
+    public DbSet<AiLearnedChoice> AiLearnedChoices => Set<AiLearnedChoice>();
     public DbSet<UserAccount> Users => Set<UserAccount>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<ManagementScope> ManagementScopes => Set<ManagementScope>();
@@ -75,6 +77,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
         model.Entity<ServiceCategory>().HasQueryFilter(x => Services.Any(s => s.Id == x.ServiceId));
         model.Entity<WorkRequest>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId && x.DeletedAt == null);
         model.Entity<RequestRouting>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
+        model.Entity<RequestEscalation>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
         model.Entity<RequestResolution>().HasQueryFilter(x => Requests.Any(r => r.Id == x.RequestId));
         model.Entity<WorkTask>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId && x.DeletedAt == null);
         model.Entity<TaskChecklistItem>().HasQueryFilter(x => WorkTasks.Any(t => t.Id == x.TaskId));
@@ -88,6 +91,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
         model.Entity<AIRecommendation>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
         model.Entity<AIAgentAction>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
         model.Entity<AiVectorMemory>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
+        model.Entity<AiLearnedChoice>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId && (x.UserId == null || x.UserId == CurrentUserId));
         model.Entity<Company>().HasQueryFilter(x => Tenants.Any(t => t.CompanyId == x.Id));
         model.Entity<UserAccount>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId && x.DeletedAt == null);
         model.Entity<Department>().HasQueryFilter(x => CurrentUserId != null && CurrentTenantId != null && x.TenantId == CurrentTenantId);
@@ -119,15 +123,15 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
 
         foreach (var entry in entries)
         {
-            if (entry.State == EntityState.Deleted && entry.Entity is not UserRole and not RolePermission)
-                throw new ApplicationFault(FaultKind.Conflict, "PERSISTENCE.HARD_DELETE_DENIED", "Historical records cannot be deleted.");
+            if (entry.State == EntityState.Deleted && entry.Entity is not UserRole and not RolePermission and not ManagementScope and not WorkflowStep and not WorkflowTransition and not WorkflowVersion and not WorkflowDefinition)
+                throw new ApplicationFault(FaultKind.Conflict, "PERSISTENCE.HARD_DELETE_DENIED", "Không thể xóa các bản ghi lịch sử trong hệ thống.");
 
             if (entry.State == EntityState.Modified)
             {
                 foreach (var property in new[] { "TenantId", "UserId", "FamilyId", "TokenHash", "CreatedAt", "IsPlatformAdministrator", "IsSystem", "WorkflowId", "WorkflowVersionId", "VersionNo", "BusinessType", "ObjectType", "ObjectId", "AuthorId", "UploadedBy", "ObjectKey" })
                 {
                     if (entry.Metadata.FindProperty(property) is not null && entry.Property(property).IsModified)
-                        throw new ApplicationFault(FaultKind.Conflict, "PERSISTENCE.IMMUTABLE_FIELD", "Record ownership and identity cannot be changed.");
+                        throw new ApplicationFault(FaultKind.Conflict, "PERSISTENCE.IMMUTABLE_FIELD", "Không được phép thay đổi thông tin định danh và sở hữu bản ghi.");
                 }
             }
 
@@ -218,9 +222,10 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
                 case TaskAssignment assignment:
                     // Initial records only until the authorized assignment/receipt/end use cases exist.
                     // Persisted ownership and active targets cannot be replaced by tracked forgeries.
+                    var isTaskActive = await WorkTasks.AnyAsync(t => t.Id == assignment.TaskId && t.Status != TaskState.Completed && t.Status != TaskState.Cancelled, cancellationToken);
                     if (entry.State != EntityState.Added || assignment.AcceptedAt is not null || assignment.RejectedAt is not null ||
                         assignment.RejectionReason is not null || assignment.EndedAt is not null ||
-                        !await WorkTasks.AnyAsync(t => t.Id == assignment.TaskId && t.Status != TaskState.Completed && t.Status != TaskState.Cancelled, cancellationToken) ||
+                        !isTaskActive ||
                         !await Users.AnyAsync(u => u.Id == assignment.AssignedBy, cancellationToken) ||
                         (assignment.UserId is { } targetUser && !await Users.AnyAsync(u => u.Id == targetUser && u.Status == UserStatus.Active, cancellationToken)) ||
                         (assignment.DepartmentId is { } targetDepartment && !await Departments.AnyAsync(d => d.Id == targetDepartment && d.Status == RecordStatus.Active, cancellationToken))) throw Denied();
@@ -408,6 +413,24 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
                         (routing.ToDepartmentId is { } toDept && !await Departments.AnyAsync(d => d.Id == toDept, cancellationToken)) ||
                         (routing.ToUserId is { } toUser && !await Users.AnyAsync(u => u.Id == toUser, cancellationToken))) throw Denied();
                     break;
+                case RequestEscalation escalation:
+                    // Additive approval record. The escalator/decider must be the acting user and the
+                    // request must belong to this tenant. The command enforces the requests.escalate /
+                    // requests.approve.elevated permissions before reaching this boundary.
+                    AssertTenant(escalation.TenantId);
+                    if (entry.State == EntityState.Added)
+                    {
+                        if (escalation.EscalatedById != CurrentUserId ||
+                            !await Requests.AnyAsync(r => r.Id == escalation.RequestId, cancellationToken) ||
+                            !await Users.AnyAsync(u => u.Id == escalation.EscalatedById, cancellationToken)) throw Denied();
+                    }
+                    else if (entry.State == EntityState.Modified)
+                    {
+                        if (escalation.DecidedById != CurrentUserId ||
+                            !await Users.AnyAsync(u => u.Id == escalation.DecidedById, cancellationToken)) throw Denied();
+                    }
+                    else throw Denied();
+                    break;
                 case InternalService service:
                     AssertTenant(service.TenantId);
                     // Metadata updates and category-add touches preserve identity and bindings.
@@ -415,8 +438,9 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
                     { if (service.ActiveWorkflowVersionId is not null || service.ActiveSlaVersionId is not null) throw Denied(); }
                     else if (entry.State != EntityState.Modified ||
                         entry.Properties.Any(p => p.IsModified && p.Metadata.Name is not (nameof(InternalService.Code) or nameof(InternalService.Name) or
-                            nameof(InternalService.Description) or nameof(InternalService.Status) or nameof(InternalService.UpdatedAt))) ||
-                        !await Services.AsNoTracking().AnyAsync(s => s.Id == service.Id && s.TenantId == service.TenantId, cancellationToken)) throw Denied();
+                            nameof(InternalService.Description) or nameof(InternalService.Status) or nameof(InternalService.UpdatedAt) or nameof(InternalService.ActiveWorkflowVersionId))) ||
+                        !await Services.AsNoTracking().AnyAsync(s => s.Id == service.Id && s.TenantId == service.TenantId, cancellationToken) ||
+                        (service.ActiveWorkflowVersionId is { } wfVerId && !await WorkflowVersions.AsNoTracking().AnyAsync(v => v.Id == wfVerId && v.Status == WorkflowVersionStatus.Published && Workflows.Any(w => w.Id == v.WorkflowId && w.TenantId == service.TenantId && w.BusinessType == WorkflowBusinessType.Request), cancellationToken))) throw Denied();
                     break;
                 case ServiceCategory category:
                     if (entry.State != EntityState.Added) throw Denied();
@@ -436,12 +460,15 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
                     break;
                 case WorkflowDefinition workflow:
                     AssertTenant(workflow.TenantId);
+                    if (entry.State == EntityState.Deleted && await WorkflowVersions.AsNoTracking().AnyAsync(v => v.WorkflowId == workflow.Id && v.Status == WorkflowVersionStatus.Published, cancellationToken))
+                        throw WorkflowImmutable();
                     break;
                 case WorkflowVersion version:
                     await ValidateWorkflowOwnerAsync(version.WorkflowId, cancellationToken);
-                    if (version.Status != WorkflowVersionStatus.Draft || version.PublishedAt is not null ||
-                        (entry.State != EntityState.Added && !await WorkflowVersions.AsNoTracking().AnyAsync(v => v.Id == version.Id && v.Status == WorkflowVersionStatus.Draft, cancellationToken)))
-                        throw WorkflowImmutable();
+                    var storedVersion = entry.State == EntityState.Added ? null : await WorkflowVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == version.Id, cancellationToken);
+                    if (entry.State == EntityState.Added) { if (version.Status != WorkflowVersionStatus.Draft || version.PublishedAt is not null) throw WorkflowImmutable(); }
+                    else if (entry.State == EntityState.Deleted) { if (storedVersion is null || storedVersion.Status != WorkflowVersionStatus.Draft) throw WorkflowImmutable(); }
+                    else { if (storedVersion is null || storedVersion.Status != WorkflowVersionStatus.Draft) throw WorkflowImmutable(); if (version.Status == WorkflowVersionStatus.Published && version.PublishedAt is null) throw WorkflowImmutable(); if (version.Status != WorkflowVersionStatus.Draft && version.Status != WorkflowVersionStatus.Published) throw WorkflowImmutable(); }
                     break;
                 case WorkflowStep step:
                     await ValidateDraftWorkflowVersionAsync(step.WorkflowVersionId, cancellationToken);
@@ -451,6 +478,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
                     break;
                 case ManagementScope scope:
                     AssertTenant(scope.TenantId);
+                    if (entry.State == EntityState.Deleted) break;
                     if (entry.State != EntityState.Added || scope.CreatedBy != CurrentUserId ||
                         !await Users.AnyAsync(u => u.Id == scope.UserId, cancellationToken) ||
                         !await Users.AnyAsync(u => u.Id == scope.CreatedBy, cancellationToken) ||
@@ -576,7 +604,7 @@ public sealed class BizFlowDbContext(DbContextOptions<BizFlowDbContext> options,
         if (version.Status != WorkflowVersionStatus.Draft || version.PublishedAt is not null) throw WorkflowImmutable();
     }
 
-    private static ApplicationFault WorkflowImmutable() => new(FaultKind.Conflict, "WORKFLOW.VERSION_IMMUTABLE", "Only draft workflow configuration can be changed; published versions require a new version.");
+    private static ApplicationFault WorkflowImmutable() => new(FaultKind.Conflict, "WORKFLOW.VERSION_IMMUTABLE", "Chỉ phiên bản nháp mới có thể chỉnh sửa cấu hình hoặc xóa; phiên bản đã xuất bản là bất biến.");
 
     private async Task ValidateUserRoleAsync(UserRole link, CancellationToken cancellationToken)
     {

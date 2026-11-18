@@ -224,6 +224,63 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("BizFlow.Domain.AI.AiLearnedChoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("ChoiceId");
+
+                    b.Property<string>("ChoiceLabel")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ChoiceValue")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("PERSONAL");
+
+                    b.Property<string>("SemanticKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("UsageCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TenantId", "SemanticKey", "UsageCount");
+
+                    b.HasIndex("TenantId", "UserId", "SemanticKey");
+
+                    b.ToTable("AiLearnedChoice", (string)null);
+                });
+
             modelBuilder.Entity("BizFlow.Domain.AI.AiVectorMemory", b =>
                 {
                     b.Property<Guid>("Id")
@@ -910,6 +967,68 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_User_AccessFailedCount", "\"AccessFailedCount\" >= 0");
 
                             t.HasCheckConstraint("CK_User_AccountPlane", "(\"TenantId\" IS NULL AND \"IsPlatformAdministrator\" AND \"DepartmentId\" IS NULL) OR (\"TenantId\" IS NOT NULL AND NOT \"IsPlatformAdministrator\")");
+                        });
+                });
+
+            modelBuilder.Entity("BizFlow.Domain.Requests.RequestEscalation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("RequestEscalationId");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecidedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("EscalatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EscalatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecidedById");
+
+                    b.HasIndex("EscalatedById");
+
+                    b.HasIndex("RequestId");
+
+                    b.HasIndex("TenantId", "State");
+
+                    b.HasIndex("TenantId", "RequestId", "EscalatedAt");
+
+                    b.ToTable("RequestEscalation", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RequestEscalation_Reason", "length(btrim(\"Reason\")) > 0");
+
+                            t.HasCheckConstraint("CK_RequestEscalation_State", "\"State\" IN ('PENDING', 'APPROVED', 'REJECTED')");
                         });
                 });
 
@@ -1724,6 +1843,10 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("ParentTaskId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ParentTaskId");
+
                     b.Property<TaskPriority>("Priority")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("task_priority")
@@ -1765,6 +1888,8 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorId");
+
+                    b.HasIndex("ParentTaskId");
 
                     b.HasIndex("RequestId");
 
@@ -2178,6 +2303,20 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("BizFlow.Domain.AI.AiLearnedChoice", b =>
+                {
+                    b.HasOne("BizFlow.Domain.Tenancy.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("BizFlow.Domain.Organization.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("BizFlow.Domain.AI.AiVectorMemory", b =>
                 {
                     b.HasOne("BizFlow.Domain.Tenancy.Tenant", null)
@@ -2366,6 +2505,32 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId", "DepartmentId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("BizFlow.Domain.Requests.RequestEscalation", b =>
+                {
+                    b.HasOne("BizFlow.Domain.Organization.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("DecidedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("BizFlow.Domain.Organization.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("EscalatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BizFlow.Domain.Requests.WorkRequest", null)
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BizFlow.Domain.Tenancy.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("BizFlow.Domain.Requests.RequestResolution", b =>
@@ -2661,6 +2826,11 @@ namespace BizFlow.Infrastructure.Persistence.Migrations
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("BizFlow.Domain.Tasks.WorkTask", null)
+                        .WithMany()
+                        .HasForeignKey("ParentTaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("BizFlow.Domain.Requests.WorkRequest", null)
                         .WithMany()
