@@ -706,7 +706,7 @@ export class AiAgentService {
 
   // --- Submitting Single Branch or All Branches ---
 
-  submitSingleBranch(branch: SubtaskBranch, force: boolean = false): void {
+  submitSingleBranch(branch: SubtaskBranch, _force: boolean = false): void {
     if (branch.status === 'submitting') return;
     if (!this.session.hasPermission('tasks.create')) {
       this.showToast('Tài khoản Nhân viên không thể tạo nhiệm vụ cho cấp dưới. Vui lòng tạo Yêu cầu nếu cần đề xuất công việc.', 'error');

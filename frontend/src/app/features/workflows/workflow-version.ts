@@ -528,7 +528,7 @@ export class WorkflowVersion {
           );
           this.loadHistory(v.workflowId);
         },
-        error: (err: HttpErrorResponse) => {
+        error: (_err: HttpErrorResponse) => {
           this.publishing.set(false);
           this.showPublishModal.set(false);
           // Do NOT show toast error on the right!

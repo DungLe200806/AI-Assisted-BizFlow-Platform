@@ -62,6 +62,10 @@ public sealed class AuthenticationService(IAuthenticationStore store, ICredentia
         await using var transaction = await store.BeginAsync(candidate, cancellationToken);
         if (transaction is null) throw InvalidCredentials();
         var now = clock.GetUtcNow();
+        if (transaction.User.MustChangePassword)
+        {
+            transaction.User.ActivateViaExternalProvider(now);
+        }
         var access = await transaction.ResolveAccessAsync(cancellationToken);
         if (!Allowed(transaction, access, now))
         {

@@ -10,6 +10,7 @@
 .vs/
 .idea/
 *.user
+*.log
 .env
 .env.*
 !.env.example

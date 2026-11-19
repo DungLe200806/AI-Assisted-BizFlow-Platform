@@ -102,6 +102,7 @@
         #fileInput
         type="file"
         class="hidden-file-input"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.zip"
         (change)="onFileSelected($event, fileInput)"
         [disabled]="uploading()"
       />

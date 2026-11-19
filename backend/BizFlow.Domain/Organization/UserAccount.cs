@@ -112,4 +112,12 @@ public sealed class UserAccount
     {
         MustChangePassword = true;
     }
+
+    public void ActivateViaExternalProvider(DateTimeOffset now)
+    {
+        MustChangePassword = false;
+        AccessFailedCount = 0;
+        LockoutEnd = null;
+        UpdatedAt = now.ToUniversalTime();
+    }
 }

@@ -318,7 +318,7 @@ import { TranslatePipe } from '../i18n/translate.pipe';
             type="button"
             class="toast-close-btn"
             [attr.aria-label]="'toast.close' | translate: 'Đóng thông báo'"
-            (click)="$event.stopPropagation(); toastService.dismiss(toast.id)"
+            (click)="$event.stopPropagation(); toastService.dismiss(toast.id, true)"
           >
             <svg
               viewBox="0 0 24 24"

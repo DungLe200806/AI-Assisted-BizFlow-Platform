@@ -56,6 +56,14 @@ describe('ToastService', () => {
     expect(service.toasts().length).toBe(0);
   });
 
+  it('dismisses immediately when immediate=true', () => {
+    const id = service.error('Immediate error');
+    expect(service.toasts().length).toBe(1);
+
+    service.dismiss(id, true);
+    expect(service.toasts().length).toBe(0);
+  });
+
   it('clears all toasts immediately', () => {
     service.error('Err 1');
     service.success('Succ 2');

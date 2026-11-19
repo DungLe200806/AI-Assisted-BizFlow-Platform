@@ -1,7 +1,7 @@
 import { test, Page, Browser } from '@playwright/test';
 import * as path from 'path';
 
-const ARTIFACT_DIR = 'C:\\Users\\admin\\.gemini\\antigravity\\brain\\3db4b9de-2cfa-42f2-a995-62b72b23ff07\\screenshots';
+const ARTIFACT_DIR = 'C:\\Users\\Admin\\.gemini\\antigravity\\brain\\bfa6b2b1-a90d-4f23-8010-29fce01d6d4b\\screenshots';
 
 async function performLogin(page: Page, identifier: string, password = 'Password123!', tenantKey = 'bizflow-corp') {
   await page.goto('http://localhost:4200/login');

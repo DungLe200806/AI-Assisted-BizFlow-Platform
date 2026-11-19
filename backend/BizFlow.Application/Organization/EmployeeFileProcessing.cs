@@ -228,7 +228,14 @@ public static class EmployeeFileProcessing
 
         if (type == "inlineStr")
         {
-            return cell.Element(SheetNs + "is")?.Element(SheetNs + "t")?.Value ?? "";
+            var isElem = cell.Element(SheetNs + "is");
+            if (isElem != null)
+            {
+                var val = isElem.Element(SheetNs + "t")?.Value;
+                if (!string.IsNullOrEmpty(val)) return val;
+                return string.Concat(isElem.Descendants(SheetNs + "t").Select(t => t.Value));
+            }
+            return "";
         }
 
         return cell.Element(SheetNs + "v")?.Value ?? "";

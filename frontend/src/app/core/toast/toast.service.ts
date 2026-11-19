@@ -16,8 +16,13 @@ export class ToastService {
     // Check for identical existing toast to prevent spam
     const existing = this.toasts().find((t) => t.type === type && t.message === cleanMessage);
     if (existing) {
-      this.resetTimer(existing.id, duration);
-      return existing.id;
+      if (existing.leaving) {
+        // If it was already exiting, remove immediately so the fresh alert displays properly
+        this.toasts.update((list) => list.filter((t) => t.id !== existing.id));
+      } else {
+        this.resetTimer(existing.id, duration);
+        return existing.id;
+      }
     }
 
     const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -71,10 +76,15 @@ export class ToastService {
     return this.show(message, 'warning', duration, finalTitle);
   }
 
-  dismiss(id: string): void {
+  dismiss(id: string, immediate = false): void {
     if (this.timeouts.has(id)) {
       clearTimeout(this.timeouts.get(id));
       this.timeouts.delete(id);
+    }
+
+    if (immediate) {
+      this.toasts.update((list) => list.filter((t) => t.id !== id));
+      return;
     }
 
     // Mark as leaving for smooth exit animation

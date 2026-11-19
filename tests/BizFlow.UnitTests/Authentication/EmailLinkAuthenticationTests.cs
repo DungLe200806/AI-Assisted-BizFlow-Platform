@@ -302,6 +302,32 @@ public sealed class EmailLinkAuthenticationTests
     }
 
     [Fact]
+    public async Task VerifyFirebaseTokenAsync_activates_and_authenticates_user_pending_activation()
+    {
+        var candidate = new AuthenticationCandidate(Guid.NewGuid(), Guid.NewGuid(), "Acme Corp", "acme");
+        var fakeTx = new FakeTransaction(candidate);
+        fakeTx.User.RequirePasswordChange();
+        Assert.True(fakeTx.User.MustChangePassword);
+
+        var store = new FakeAuthenticationStore
+        {
+            CandidatesToReturn = [candidate],
+            TransactionToReturn = fakeTx
+        };
+        var cache = new FakeCacheService();
+        var authService = CreateAuthService(store);
+        var fakeVerifier = new FakeFirebaseTokenVerifier(new FirebaseVerifiedUser("firebase-uid-3", "pending@example.com", true));
+        var service = new EmailLinkAuthenticationService(store, cache, authService, fakeVerifier);
+
+        var result = await service.VerifyFirebaseTokenAsync("valid-id-token", default);
+
+        Assert.Equal("Authenticated", result.Status);
+        Assert.NotNull(result.Authentication);
+        Assert.Equal("access-token", result.Authentication.AccessToken);
+        Assert.False(fakeTx.User.MustChangePassword);
+    }
+
+    [Fact]
     public async Task VerifyFirebaseTokenAsync_handles_multiple_workspaces_with_ticket()
     {
         var candidate1 = new AuthenticationCandidate(Guid.NewGuid(), Guid.NewGuid(), "Acme Corp", "acme");

@@ -56,7 +56,7 @@ public sealed class AccessSnapshotProvider(BizFlowDbContext db, TimeProvider clo
         }
 
         return new AccessSnapshot(user.Id, user.TenantId,
-            user.CanAuthenticate(clock.GetUtcNow()),
+            user.Status == UserStatus.Active && user.DeletedAt == null && (user.LockoutEnd is null || user.LockoutEnd <= clock.GetUtcNow()),
             tenantActive, grants, departments, managedDepartments);
     }
 }

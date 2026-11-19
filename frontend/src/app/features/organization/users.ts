@@ -516,12 +516,13 @@ export class Users {
       .filter((l) => l.length > 0);
     if (lines.length <= 1) return [];
 
+    const delimiter = lines[0].includes(';') ? ';' : ',';
     const startIndex =
       lines[0].toLowerCase().includes('email') || lines[0].toLowerCase().includes('mã') ? 1 : 0;
     const rows: BatchImportUserRow[] = [];
 
     for (let i = startIndex; i < lines.length; i++) {
-      const parts = lines[i].split(',').map((p) => p.trim().replace(/^["']|["']$/g, ''));
+      const parts = lines[i].split(delimiter).map((p) => p.trim().replace(/^["']|["']$/g, ''));
       if (parts.length >= 3) {
         rows.push({
           employeeCode: parts[0] || `EMP${String(i).padStart(3, '0')}`,
@@ -595,7 +596,7 @@ export class Users {
       return;
     }
     const file = this.selectedImportFile();
-    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+    if (file) {
       this.batchExecuting.set(true);
       const formData = new FormData();
       formData.append('file', file);
@@ -619,7 +620,7 @@ export class Users {
         },
         error: (err) => {
           this.batchExecuting.set(false);
-          const msg = err?.error?.message || 'Không thể kiểm tra dữ liệu file Excel.';
+          const msg = err?.error?.message || 'Không thể kiểm tra dữ liệu file Excel/CSV.';
           this.toast.error(msg);
         },
       });
@@ -676,7 +677,7 @@ export class Users {
       return;
     }
     const file = this.selectedImportFile();
-    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+    if (file) {
       this.batchExecuting.set(true);
       const formData = new FormData();
       formData.append('file', file);
@@ -693,7 +694,7 @@ export class Users {
         },
         error: (err) => {
           this.batchExecuting.set(false);
-          const msg = err?.error?.message || 'Không thể nhập dữ liệu từ file Excel.';
+          const msg = err?.error?.message || 'Không thể nhập dữ liệu từ file Excel/CSV.';
           this.toast.error(msg);
         },
       });

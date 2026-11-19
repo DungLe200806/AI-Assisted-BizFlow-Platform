@@ -120,6 +120,30 @@ describe('WorkItemAttachments component', () => {
     expect(mockInput.value).toBe('');
   });
 
+  it('rejects unsupported file extensions immediately with clear Vietnamese error', async () => {
+    const fixture = TestBed.createComponent(WorkItemAttachments);
+    fixture.componentRef.setInput('objectType', 'TASK');
+    fixture.componentRef.setInput('objectId', 'task-100');
+    fixture.detectChanges();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne((r) => r.url === '/api/v1/attachments').flush([]);
+    fixture.detectChanges();
+
+    const invalidFile = new File(['binary content'], 'script.exe', { type: 'application/x-msdownload' });
+    const mockInput = {
+      files: [invalidFile],
+      value: 'script.exe',
+    } as unknown as HTMLInputElement;
+
+    await fixture.componentInstance.onFileSelected(new Event('change'), mockInput);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.error()).toContain('Định dạng tệp ".exe" không được hỗ trợ');
+    expect(mockInput.value).toBe('');
+    http.expectNone('/api/v1/attachments/upload-session');
+  });
+
   it('handles multi-step file upload flow successfully', async () => {
     const fixture = TestBed.createComponent(WorkItemAttachments);
     fixture.componentRef.setInput('objectType', 'TASK');

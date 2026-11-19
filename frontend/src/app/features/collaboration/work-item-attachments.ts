@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, effect, inject, signal } from '@angular/core';
+import { Component, Input, OnInit, inject, signal } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -66,14 +66,26 @@ export class WorkItemAttachments implements OnInit {
   readonly summarizerOpen = signal(false);
   readonly activeAttachmentForSummary = signal<AttachmentItem | null>(null);
 
-  constructor() {
-    effect(() => {
-      const err = this.error();
-      if (err) {
-        this.toast.error(err);
-      }
-    });
-  }
+  // 500 MB hard limit
+  readonly MAX_FILE_SIZE = 524288000;
+
+  readonly ALLOWED_EXTENSIONS = [
+    'pdf',
+    'doc',
+    'docx',
+    'xls',
+    'xlsx',
+    'ppt',
+    'pptx',
+    'txt',
+    'csv',
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'webp',
+    'zip',
+  ];
 
   openAiSummarizer(att: AttachmentItem) {
     this.activeAttachmentForSummary.set(att);
@@ -88,9 +100,6 @@ export class WorkItemAttachments implements OnInit {
   onTasksCreatedFromSummary(_tasks: any[]) {
     // Optionally trigger refresh if we are on a task/request view
   }
-
-  // 500 MB hard limit
-  readonly MAX_FILE_SIZE = 524288000;
 
   ngOnInit() {
     if (this.objectId) {
@@ -111,22 +120,46 @@ export class WorkItemAttachments implements OnInit {
           this.loading.set(false);
         },
         error: (err) => {
-          this.error.set(
-            err?.error?.message ??
-              this.i18n.t('attachments.errLoad', 'Failed to load attachments.'),
-          );
+          const msg =
+            err?.status === 403
+              ? 'Bạn không có quyền xem tệp đính kèm của mục này.'
+              : err?.error?.message ??
+                this.i18n.t('attachments.errLoad', 'Không thể tải danh sách tệp đính kèm.');
+          this.error.set(msg);
+          this.toast.error(msg, 'Lỗi tải đính kèm');
           this.loading.set(false);
         },
       });
   }
 
-  async onFileSelected(event: Event, inputElement: HTMLInputElement) {
+  async onFileSelected(_event: Event, inputElement: HTMLInputElement) {
     const files = inputElement.files;
     if (!files || files.length === 0) return;
 
     const file = files[0];
+
+    // Client-side validation: file extension check
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (!this.ALLOWED_EXTENSIONS.includes(ext)) {
+      const msg = `Định dạng tệp ".${ext || 'không xác định'}" không được hỗ trợ. Vui lòng chọn tệp tài liệu (PDF, Word, Excel, PowerPoint), văn bản (TXT, CSV), hình ảnh (PNG, JPG, WEBP) hoặc tệp nén (ZIP).`;
+      this.error.set(msg);
+      this.toast.error(msg, 'Định dạng tệp không hợp lệ');
+      inputElement.value = '';
+      return;
+    }
+
     if (file.size > this.MAX_FILE_SIZE) {
-      this.error.set('Dung lượng tệp vượt quá giới hạn tối đa 500 MB.');
+      const msg = 'Dung lượng tệp vượt quá giới hạn tối đa 500 MB.';
+      this.error.set(msg);
+      this.toast.error(msg, 'Tệp quá lớn');
+      inputElement.value = '';
+      return;
+    }
+
+    if (file.size === 0) {
+      const msg = 'Tệp đính kèm không được để rỗng (0 bytes).';
+      this.error.set(msg);
+      this.toast.error(msg, 'Tệp không hợp lệ');
       inputElement.value = '';
       return;
     }
@@ -149,7 +182,7 @@ export class WorkItemAttachments implements OnInit {
 
       if (!sessionResult) {
         throw new Error(
-          this.i18n.t('attachments.errCreateSession', 'Failed to create upload session.'),
+          this.i18n.t('attachments.errCreateSession', 'Không thể khởi tạo phiên tải lên.'),
         );
       }
 
@@ -177,10 +210,14 @@ export class WorkItemAttachments implements OnInit {
 
       if (finalized) {
         this.attachments.update((prev) => [...prev, finalized]);
+        this.toast.success(`Đã tải lên thành công tệp "${file.name}".`, 'Tải lên hoàn tất');
       }
       inputElement.value = '';
     } catch (err: any) {
-      this.error.set(err?.error?.message ?? err?.message ?? 'Tải tệp đính kèm thất bại.');
+      inputElement.value = '';
+      const friendlyMessage = this.getFriendlyErrorMessage(err);
+      this.error.set(friendlyMessage);
+      this.toast.error(friendlyMessage, 'Lỗi tải tệp lên');
     } finally {
       this.uploading.set(false);
       this.uploadMessage.set('');
@@ -194,12 +231,16 @@ export class WorkItemAttachments implements OnInit {
     this.http.delete(`/api/v1/attachments/${attachmentId}`).subscribe({
       next: () => {
         this.attachments.update((prev) => prev.filter((a) => a.attachmentId !== attachmentId));
+        this.toast.success('Đã xóa tệp đính kèm thành công.', 'Đã xóa');
       },
       error: (err) => {
-        this.error.set(
-          err?.error?.message ??
-            this.i18n.t('attachments.errDelete', 'Failed to delete attachment.'),
-        );
+        const msg =
+          err?.status === 403
+            ? 'Bạn không có quyền xóa tệp đính kèm này.'
+            : err?.error?.message ??
+              this.i18n.t('attachments.errDelete', 'Không thể xóa tệp đính kèm.');
+        this.error.set(msg);
+        this.toast.error(msg, 'Lỗi xóa tệp');
       },
     });
   }
@@ -247,12 +288,61 @@ export class WorkItemAttachments implements OnInit {
         error: (err) => {
           this.downloading.set(null);
           if (viewer && !viewer.closed) viewer.close();
-          this.error.set(
-            err?.error?.message ??
-              this.i18n.t('attachments.errDownload', 'Không thể tải tệp đính kèm xuống.'),
-          );
+          const msg =
+            err?.status === 404
+              ? 'Tệp đính kèm không tồn tại trên hệ thống hoặc đã bị xóa.'
+              : err?.status === 403
+                ? 'Bạn không có quyền tải xuống tệp đính kèm này.'
+                : 'Không thể tải tệp đính kèm xuống. Vui lòng thử lại sau.';
+          this.error.set(msg);
+          this.toast.error(msg, 'Lỗi tải xuống');
         },
       });
+  }
+
+  private getFriendlyErrorMessage(err: any): string {
+    if (!err) return 'Tải tệp đính kèm thất bại. Vui lòng thử lại.';
+
+    const status = err?.status;
+    const errCode = err?.error?.code;
+    const rawMsg = String(err?.error?.message || err?.message || '');
+
+    if (
+      errCode === 'ATTACHMENT.TYPE_NOT_ALLOWED' ||
+      rawMsg.includes('not permitted by tenant policy')
+    ) {
+      return 'Định dạng tệp này không được phép tải lên hệ thống. Vui lòng chọn tệp tài liệu, bảng tính, hình ảnh hoặc tệp nén hợp lệ.';
+    }
+
+    if (
+      errCode === 'ATTACHMENT.SIZE_EXCEEDED' ||
+      rawMsg.includes('exceeds maximum allowed size')
+    ) {
+      return 'Dung lượng tệp vượt quá giới hạn tối đa 500 MB cho phép của hệ thống.';
+    }
+
+    if (errCode === 'ATTACHMENT.INVALID_FILE_NAME') {
+      return 'Tên tệp không hợp lệ. Vui lòng kiểm tra lại tên tệp và thử lại.';
+    }
+
+    if (
+      status === 403 ||
+      rawMsg.includes('403') ||
+      rawMsg.includes('Forbidden') ||
+      rawMsg.includes('SignatureDoesNotMatch')
+    ) {
+      return 'Máy chủ lưu trữ từ chối kết nối (403 Forbidden). Vui lòng thử lại sau hoặc liên hệ quản trị viên.';
+    }
+
+    if (status === 0 || rawMsg.includes('Http failure response')) {
+      return 'Không thể kết nối đến máy chủ lưu trữ tệp. Vui lòng kiểm tra lại kết nối mạng.';
+    }
+
+    if (err?.error?.message && typeof err.error.message === 'string') {
+      return err.error.message;
+    }
+
+    return 'Tải tệp đính kèm lên thất bại. Vui lòng thử lại.';
   }
 
   formatBytes(bytes: number): string {

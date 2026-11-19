@@ -259,17 +259,17 @@ public sealed class AttachmentService(
         var fileName = AttachmentRules.SanitizeFileName(command.FileName);
 
         if (command.SizeBytes <= 0)
-            throw new ApplicationFault(FaultKind.Validation, "ATTACHMENT.SIZE_INVALID", "File size must be greater than zero.");
+            throw new ApplicationFault(FaultKind.Validation, "ATTACHMENT.SIZE_INVALID", "Dung lượng tệp phải lớn hơn 0 byte.");
 
         var maxSizeBytes = await store.GetTenantMaxUploadSizeAsync(tenantId, cancellationToken) ?? Attachment.MaxFileSizeBytes;
         if (command.SizeBytes > maxSizeBytes)
             throw new ApplicationFault(FaultKind.Validation, "ATTACHMENT.SIZE_EXCEEDED",
-                $"File size {command.SizeBytes} bytes exceeds maximum allowed size of {maxSizeBytes} bytes (500 MB).");
+                $"Dung lượng tệp {command.SizeBytes} bytes vượt quá giới hạn tối đa cho phép là {maxSizeBytes} bytes (500 MB).");
 
         var customAllowlist = await store.GetTenantAllowedContentTypesAsync(tenantId, cancellationToken);
         if (!AttachmentRules.IsContentTypeAllowed(command.ContentType, customAllowlist))
             throw new ApplicationFault(FaultKind.Validation, "ATTACHMENT.TYPE_NOT_ALLOWED",
-                $"File content type '{command.ContentType}' is not permitted by tenant policy.");
+                $"Định dạng tệp '{command.ContentType}' không được hỗ trợ bởi hệ thống.");
 
         string? keyHash = null;
         if (!string.IsNullOrWhiteSpace(idempotencyKey))

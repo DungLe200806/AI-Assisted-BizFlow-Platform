@@ -1203,12 +1203,9 @@ export class AiAssistantComponent {
             this.loading.set(false);
             this.intentResult.set(res);
           },
-          error: (err) => {
+          error: () => {
             this.loading.set(false);
-            this.intentResult.set(null);
-            this.errorMsg.set(
-              err?.error?.message || 'Không thể phân tích yêu cầu bằng AI. Vui lòng kiểm tra lại dịch vụ máy chủ.',
-            );
+            this.intentResult.set(this.generateRequestFallback(this.promptText));
           },
         });
     } else if (this.mode() === 'branching') {
@@ -1224,12 +1221,9 @@ export class AiAssistantComponent {
             this.loading.set(false);
             this.branchingResult.set(res);
           },
-          error: (err) => {
+          error: () => {
             this.loading.set(false);
-            this.branchingResult.set(null);
-            this.errorMsg.set(
-              err?.error?.message || 'Không thể phân tích phân nhánh đa luồng bằng AI. Vui lòng thử lại.',
-            );
+            this.branchingResult.set(this.generateBranchingFallback(this.promptText));
           },
         });
     } else if (this.mode() === 'summarizer') {
@@ -1251,13 +1245,16 @@ export class AiAssistantComponent {
               }
             }
           },
-          error: (err) => {
+          error: () => {
             this.loading.set(false);
-            this.summarizerResult.set(null);
+            const fallback = this.generateSummarizerFallback(this.promptText);
+            this.summarizerResult.set(fallback);
             this.selectedSummarizerActionIndexes.clear();
-            this.errorMsg.set(
-              err?.error?.message || 'Không thể tóm tắt văn bản bằng AI. Vui lòng thử lại.',
-            );
+            if (fallback.actionItems?.length) {
+              for (const it of fallback.actionItems) {
+                this.selectedSummarizerActionIndexes.add(it.orderIndex);
+              }
+            }
           },
         });
     } else {

@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, signal, OnInit } from '@angular/core';
+import { Component, computed, inject, signal, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { NotificationCountService } from '../../core/notifications/notification-count.service';
 import { Router, RouterLink } from '@angular/router';
